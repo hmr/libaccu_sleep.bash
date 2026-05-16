@@ -1,5 +1,7 @@
 # libaccu_sleep.bash
 
+[日本語版](README.ja.md)
+
 A somewhat reliable Bash timer helper for periodic loops.
 
 `libaccu_sleep.bash` is a small Bash library that sleeps against an accumulated
@@ -43,7 +45,7 @@ ACCU_SLEEP_RESET
 
 ## API
 
-### `ACCU_SLEEP interval_us`
+### `ACCU_SLEEP <interval_us>`
 
 Sleeps until the next accumulated schedule point.
 
