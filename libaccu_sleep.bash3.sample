@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# vim: set noet syn=bash ft=sh ff=unix fenc=utf-8 ts=2 sw=0 : # GPP default modeline for bash script
+
+# libaccu_sleep.bash3.sample
+#   Bash 3 compatible date(1)-based sample timer.
+#
+# Copyright (c) 2026 hmr
+
+# Usage:
+#   ./libaccu_sleep.bash3.sample
+#
+# Notes:
+#   - No key input handling.
+#   - Prints statistics every 100 samples and when the program exits.
+#   - Uses GNU date nanoseconds when date +%s.%N is available.
+#   - Falls back to epoch seconds from date +%s otherwise.
+
+INTERVAL_US=1000000
+STATS_EVERY=100
+
+DATE_HAS_NANOSECONDS=0
+
+START_US=
+PREV_TICK_US=0
+COUNT=0
+
+SAMPLE_COUNT=0
+ELAPSED_SUM_US=0
+LATENESS_SUM_US=0
+FINISH_DONE=0
+
+function DETECT_DATE_PRECISION() {
+    local probe nsec
+
+    probe=$(date +%s.%N 2>/dev/null) || return 0
+    nsec=${probe#*.}
+
+    if [[ $probe != "$nsec" ]] && [[ -n $nsec ]] && [[ $nsec != *[!0-9]* ]]; then
+        DATE_HAS_NANOSECONDS=1
+    fi
+}
+
+function NOW_US() {
+    local t sec nsec usec
+
+    if (( DATE_HAS_NANOSECONDS != 0 )); then
+        t=$(date +%s.%N) || return 1
+        sec=${t%.*}
+        nsec=${t#*.}
+        usec=${nsec:0:6}
+
+        while (( ${#usec} < 6 )); do
+            usec=${usec}0
+        done
+
+        printf '%s\n' "$((10#$sec * 1000000 + 10#$usec))"
+        return 0
+    fi
+
+    sec=$(date +%s) || return 1
+    printf '%s\n' "$((10#$sec * 1000000))"
+}
+
+function FORMAT_US() {
+    local us=$1
+    local sign=""
+
+    if (( us < 0 )); then
+        sign="-"
+        us=$((-us))
+    fi
+
+    printf '%s%d.%06d' "$sign" "$((us / 1000000))" "$((us % 1000000))"
+}
+
+function SLEEP_UNTIL() {
+    local target_us=$1
+    local now_us remain_us
+
+    now_us=$(NOW_US) || return 1
+    remain_us=$((target_us - now_us))
+
+    if (( remain_us <= 0 )); then
+        return 0
+    fi
+
+    sleep "$(FORMAT_US "$remain_us")"
+}
+
+function PRINT_STATS() {
+    local avg_elapsed_us
+    local avg_lateness_us
+
+    if (( SAMPLE_COUNT == 0 )); then
+        printf '[STATS] Count: 0 / Avg. Elapsed: N/A / Avg. Lateness: N/A\n'
+        return
+    fi
+
+    avg_elapsed_us=$((ELAPSED_SUM_US / SAMPLE_COUNT))
+    avg_lateness_us=$((LATENESS_SUM_US / SAMPLE_COUNT))
+
+    printf '[STATS] Count: %d / Avg. Elapsed: %s / Avg. Lateness: %s\n' \
+        "$SAMPLE_COUNT" \
+        "$(FORMAT_US "$avg_elapsed_us")" \
+        "$(FORMAT_US "$avg_lateness_us")"
+}
+
+function FINISH() {
+    local exit_status=${1:-0}
+
+    if (( FINISH_DONE != 0 )); then
+        exit "$exit_status"
+    fi
+
+    FINISH_DONE=1
+    trap - EXIT INT TERM
+
+    printf '\n'
+    PRINT_STATS
+
+    exit "$exit_status"
+}
+
+trap 'FINISH 130' INT
+trap 'FINISH 143' TERM
+trap 'FINISH $?' EXIT
+
+DETECT_DATE_PRECISION
+START_US=$(NOW_US) || exit 1
+
+if (( DATE_HAS_NANOSECONDS != 0 )); then
+    printf 'time_source date+%%s.%%N\n'
+else
+    printf 'time_source date+%%s\n'
+fi
+
+printf 'count tick elapsed lateness\n'
+
+while true; do
+    CURRENT_US=$(NOW_US) || exit 1
+    EXPECTED_US=$((START_US + COUNT * INTERVAL_US))
+
+
+    if (( PREV_TICK_US == 0 )); then
+        ELAPSED_TEXT="N/A"
+    else
+        ELAPSED_US=$((CURRENT_US - PREV_TICK_US))
+        ELAPSED_TEXT=$(FORMAT_US "$ELAPSED_US")
+    fi
+
+    LATENESS_US=$((CURRENT_US - EXPECTED_US))
+
+    printf '%d %s %s %s\n' \
+        "$COUNT" \
+        "$(FORMAT_US "$CURRENT_US")" \
+        "$ELAPSED_TEXT" \
+        "$(FORMAT_US "$LATENESS_US")"
+
+    if (( COUNT >= 1 )); then
+        SAMPLE_COUNT=$((SAMPLE_COUNT + 1))
+        ELAPSED_SUM_US=$((ELAPSED_SUM_US + ELAPSED_US))
+        LATENESS_SUM_US=$((LATENESS_SUM_US + LATENESS_US))
+
+        if (( SAMPLE_COUNT % STATS_EVERY == 0 )); then
+            PRINT_STATS
+        fi
+    fi
+
+    PREV_TICK_US=$CURRENT_US
+
+    # Your task here.
+    # your_command_here
+		sleep 0.8
+
+
+    COUNT=$((COUNT + 1))
+
+    SLEEP_UNTIL "$((START_US + COUNT * INTERVAL_US))" || exit 1
+done

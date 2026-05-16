@@ -10,11 +10,14 @@ This helps reduce drift when the loop body itself takes time.
 
 ## Requirements
 
-- Bash 5 or later
+- Bash 5 or later is recommended.
 - A POSIX-like environment with `sleep`, `stty`, and `/dev/tty` if key input
   hooks are used
 
-The library uses Bash's `EPOCHREALTIME`, so it will not work with older one.
+Accumulated scheduling uses Bash's `EPOCHREALTIME`. If `EPOCHREALTIME` is
+unavailable, the library prints a warning when sourced and `ACCU_SLEEP` falls
+back to a plain `sleep` call. In that fallback mode, accumulated scheduling,
+drift correction, and key input hooks are not available.
 
 ## Usage
 
@@ -36,6 +39,9 @@ done
 `ACCU_SLEEP` keeps an internal next-target timestamp. If the loop body takes
 100 ms and the interval is 1 second, the next sleep is shortened so the loop
 continues to aim at the original schedule.
+
+When `EPOCHREALTIME` is unavailable, `ACCU_SLEEP` sleeps for the requested
+relative interval and does not keep an accumulated schedule.
 
 Use `ACCU_SLEEP_RESET` when starting a new schedule.
 
@@ -96,10 +102,22 @@ Run the sample program to print per-tick timing information.
 ./libaccu_sleep.sample
 ```
 
-Controls:
+The sample requires `EPOCHREALTIME` because it prints timing statistics.
+
+For Bash 3.x environments, use the date-based sample instead.
+
+```bash
+./libaccu_sleep.bash3.sample
+```
+
+Controls for `libaccu_sleep.sample`:
 
 - `Ctrl-x`: print current statistics and continue
 - `Ctrl-c`: print statistics and exit
+
+The Bash 3 compatible sample does not handle key input. It uses `date +%s.%N`
+when GNU date nanoseconds are available, falls back to `date +%s` otherwise,
+and prints statistics every 100 samples and when it exits.
 
 ## Development
 
@@ -108,13 +126,14 @@ Syntax check:
 ```bash
 bash -n libaccu_sleep.bash
 bash -n libaccu_sleep.sample
+bash -n libaccu_sleep.bash3.sample
+/bin/bash -n libaccu_sleep.bash3.sample
 ```
 
 ShellCheck:
 
 ```bash
-shellcheck -x libaccu_sleep.bash
-shellcheck -x libaccu_sleep.sample
+shellcheck -x libaccu_sleep.bash libaccu_sleep.sample libaccu_sleep.bash3.sample
 ```
 
 Use `-x` for the sample so ShellCheck follows the sourced library file.
