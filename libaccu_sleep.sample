@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# vim: set noet syn=bash ft=sh ff=unix fenc=utf-8 ts=2 sw=0 : # GPP default modeline for bash script
+
+# libaccu_sleep.sample.bash
+#   Sample program for libaccu_sleep.bash.
+#
+# Copyright (c) 2026 hmr
+
+# Usage:
+#   ./accu_sleep_sample.bash
+#
+# Controls:
+#   Ctrl-x : Print statistics and continue.
+#   Ctrl-c : Print statistics and exit.
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+source "$SCRIPT_DIR/libaccu_sleep.bash"
+
+INTERVAL_US=1000000
+CTRL_X=$'\030'
+
+START_US=
+PREV_TICK_US=0
+COUNT=0
+
+SAMPLE_COUNT=0
+ELAPSED_SUM_US=0
+LATENESS_SUM_US=0
+
+function PRINT_STATS() {
+    local avg_elapsed_us
+    local avg_lateness_us
+
+    if (( SAMPLE_COUNT == 0 )); then
+        printf '[STATS] Count: 0 / Avg. Elapsed: N/A / Avg. Lateness: N/A\n'
+        return
+    fi
+
+    avg_elapsed_us=$((ELAPSED_SUM_US / SAMPLE_COUNT))
+    avg_lateness_us=$((LATENESS_SUM_US / SAMPLE_COUNT))
+
+    printf '[STATS] Count: %d / Avg. Elapsed: %s / Avg. Lateness: %s\n' \
+        "$SAMPLE_COUNT" \
+        "$(ACCU_SLEEP_FORMAT_US "$avg_elapsed_us")" \
+        "$(ACCU_SLEEP_FORMAT_US "$avg_lateness_us")"
+}
+
+function FINISH() {
+    local exit_status=${1:-0}
+
+    printf '\n'
+    PRINT_STATS
+    ACCU_SLEEP_RESTORE_TTY
+
+    exit "$exit_status"
+}
+
+function ACCU_SLEEP_ON_KEY() {
+    local key=$1
+
+    if [[ $key == "$CTRL_X" ]]; then
+        PRINT_STATS
+    fi
+}
+
+trap 'ACCU_SLEEP_RESTORE_TTY' EXIT
+trap 'FINISH 130' INT
+trap 'FINISH 143' TERM
+
+START_US=$(ACCU_SLEEP_NOW_US)
+
+printf 'count tick elapsed lateness\n'
+
+while true; do
+    CURRENT_US=$(ACCU_SLEEP_NOW_US)
+    EXPECTED_US=$((START_US + COUNT * INTERVAL_US))
+
+    if (( PREV_TICK_US == 0 )); then
+        ELAPSED_TEXT="N/A"
+    else
+        ELAPSED_US=$((CURRENT_US - PREV_TICK_US))
+        ELAPSED_TEXT=$(ACCU_SLEEP_FORMAT_US "$ELAPSED_US")
+    fi
+
+    LATENESS_US=$((CURRENT_US - EXPECTED_US))
+
+    printf '%d %s %s %s\n' \
+        "$COUNT" \
+        "$EPOCHREALTIME" \
+        "$ELAPSED_TEXT" \
+        "$(ACCU_SLEEP_FORMAT_US "$LATENESS_US")"
+
+    if (( COUNT >= 1 )); then
+        SAMPLE_COUNT=$((SAMPLE_COUNT + 1))
+        ELAPSED_SUM_US=$((ELAPSED_SUM_US + ELAPSED_US))
+        LATENESS_SUM_US=$((LATENESS_SUM_US + LATENESS_US))
+    fi
+
+    PREV_TICK_US=$CURRENT_US
+
+    # Your task here.
+    # your_command_here
+
+    COUNT=$((COUNT + 1))
+
+    ACCU_SLEEP "$INTERVAL_US"
+done
